@@ -11,7 +11,7 @@ def get_files(folder):
     return file_list
 
 def get_duplicates(folder):
-    file_list = get_files(file_list, folder)
+    file_list = get_files(folder)
 
     file_list.sort()
 
