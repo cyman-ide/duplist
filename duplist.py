@@ -10,6 +10,16 @@ def get_files(folder):
             file_list.append((os.path.getsize(full_path), full_path))
     return file_list
 
+def assure_duplication(filename1, filename2, size):
+    with open(filename1, 'rb') as file1, open(filename2, 'rb') as file2:
+        chunk_size = min(size, 1000)
+        chunk1 = file1.read(chunk_size)
+        chunk2 = file2.read(chunk_size)
+        for i in range(chunk_size):
+            if chunk1[i] != chunk2[i]:
+                return False
+    return True
+
 def get_duplicates(folder):
     file_list = get_files(folder)
 
@@ -19,7 +29,7 @@ def get_duplicates(folder):
     last_item = file_list[0]
     dup_count = 0
     for item in file_list[1:]:
-        if item[0] == last_item[0]:
+        if item[0] == last_item[0] and assure_duplication(item[1], last_item[1], item[0]):
             if dup_count == 0:
                 duplicates.append(last_item)
             duplicates.append(item)
