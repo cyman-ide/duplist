@@ -2,6 +2,8 @@
 
 import os, sys
 
+assert(sys.version_info.major == 3)
+
 def get_files(folder):
     file_list = []
     for (root, folder_names, filenames) in os.walk(folder):
