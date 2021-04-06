@@ -32,6 +32,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
 
+static const char * HELP =
+"duplist v1.0 Copyright (C) 2021 cyman\n"
+"usage: duplist [--reverse] DIRECTORY\n"
+;
+
 typedef struct FileInfo {
 	size_t size;
 	const char * name;
@@ -230,6 +235,7 @@ int
 main(int argc, const char ** argv) {
 	if (argc < 2) {
 		fprintf(stderr, "no arguments\n");
+		fputs(HELP, stderr);
 		return 1;
 	}
 
@@ -241,12 +247,17 @@ main(int argc, const char ** argv) {
 			} else if (argv[i][1] == '-') {
 				if (strcmp(&argv[i][2], "reverse") == 0) {
 					gSortDirection = -1;
+				} else if (strcmp(&argv[i][2], "help") == 0) {
+					fputs(HELP, stderr);
+					return 0;
 				} else {
 					fprintf(stderr, "unknown option \"%s\"\n", &argv[i][2]);
+					fputs(HELP, stderr);
 					return 1;
 				}
 			} else {
 				fprintf(stderr, "unknown option \'%c\'\n", argv[i][1]); 
+				fputs(HELP, stderr);
 				return 1;
 			}
 		} else {
@@ -257,6 +268,12 @@ main(int argc, const char ** argv) {
 				return 1;
 			}
 		}
+	}
+
+	if (search_dir_name == NULL) {
+		fprintf(stderr, "no directory was passed.\n");
+		fputs(HELP, stderr);
+		return 1;
 	}
 
 	if (chdir(search_dir_name)) {
