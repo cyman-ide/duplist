@@ -15,12 +15,28 @@
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
 
-// TODO?: might be better to have a bucket array for the name buffer so
-// we can just store pointer to char
 typedef struct FileInfo {
 	size_t size;
-	size_t name_idx;
+	const char * name;
 } FileInfo;
+
+#define STRING_BUCKET_CAPACITY 65536 // 64 KiB
+typedef struct StringBucket {
+	uint32_t capacity;
+	uint32_t length;
+	char * data;
+} StringBucket;
+
+StringBucket
+StringBucket_create() {
+	StringBucket result;
+
+	result.capacity = STRING_BUCKET_CAPACITY;
+	result.length = 0;
+	result.data = malloc(STRING_BUCKET_CAPACITY);
+
+	return result;
+}
 
 // copied from blkmv
 static void
@@ -51,7 +67,7 @@ make_new_path(const char * dir_name, const char * d_name, char * new_path) {
 
 // modified from blkmv
 static int
-find_recursive(const char * dir_name, FileInfo ** file_list, char ** file_list_buffer) {
+find_recursive(const char * dir_name, FileInfo ** file_list, StringBucket ** file_name_buffer) {
 	DIR * directory = opendir(dir_name);
 	struct dirent * entry;
 	if (!directory) {
@@ -65,25 +81,30 @@ find_recursive(const char * dir_name, FileInfo ** file_list, char ** file_list_b
 			make_new_path(dir_name, entry->d_name, new_path);
 
 			size_t filename_len = strlen(new_path);
-			size_t new_filename_idx = arraddnindex(*file_list_buffer, filename_len + 1);
-			strncpy(*file_list_buffer + new_filename_idx, new_path, filename_len);
-			(*file_list_buffer)[new_filename_idx + filename_len] = '\0';
+			StringBucket * bucket = &(*file_name_buffer)[arrlen(*file_name_buffer)-1];
+			if (bucket->length + filename_len + 1 > bucket->capacity) {
+				arrput(*file_name_buffer, StringBucket_create());
+				bucket = &(*file_name_buffer)[arrlen(*file_name_buffer)-1];
+			}
+			strcpy(&bucket->data[bucket->length], new_path);
+			const char * new_filename = &bucket->data[bucket->length];
+			bucket->length += filename_len + 1;
 
 			struct stat file_stat;
-			if (stat(&(*file_list_buffer)[new_filename_idx], &file_stat)) {
-				fprintf(stderr, "error getting file info from %s\n", &(*file_list_buffer)[new_filename_idx]);
+			if (stat(new_filename, &file_stat)) {
+				fprintf(stderr, "error getting file info from %s\n", new_filename);
 				return -1;
 			}
 			FileInfo new_file = {
 				.size = file_stat.st_size,
-				.name_idx = new_filename_idx,
+				.name = new_filename,
 			};
 			arrput(*file_list, new_file);
 		} else if (entry->d_type == DT_DIR && entry->d_name[0] != '.') { // directory
 			char new_path [PATH_MAX];
 			make_new_path(dir_name, entry->d_name, new_path);
 
-			int result = find_recursive(new_path, file_list, file_list_buffer);
+			int result = find_recursive(new_path, file_list, file_name_buffer);
 			if (result) {
 				closedir(directory);
 				return result;
@@ -105,12 +126,12 @@ sort_function(const void * voida, const void * voidb) {
 	if (result != 0) {
 		return gSortDirection * result;
 	} else {
-		return strcmp(gFileNameBuffer + a->name_idx,gFileNameBuffer + b->name_idx);
+		return strcmp(a->name, b->name);
 	}
 }
 
 static void
-get_duplicates(const FileInfo * file_list, const char * file_name_buffer, FileInfo ** ptr_dup_list) {
+get_duplicates(const FileInfo * file_list, StringBucket * file_name_buffer, FileInfo ** ptr_dup_list) {
 	const FileInfo * p_last_item = &file_list[0];
 	size_t dup_count = 0;
 
@@ -119,8 +140,8 @@ get_duplicates(const FileInfo * file_list, const char * file_name_buffer, FileIn
 
 	for (int i=1; i < arrlen(file_list); ++i) {
 		if (file_list[i].size == p_last_item->size) {
-			const char * filename1 = file_name_buffer + file_list[i].name_idx;
-			const char * filename2 = file_name_buffer + p_last_item->name_idx;
+			const char * filename1 = file_list[i].name;
+			const char * filename2 = p_last_item->name;
 			FILE * file1 = fopen(filename1, "rb");
 			FILE * file2 = fopen(filename2, "rb");
 
@@ -225,13 +246,13 @@ main(int argc, const char ** argv) {
 		fprintf(stderr, "failed to change working directory.\n");
 		return -1;
 	}
-	char * file_name_buffer = NULL;
+	StringBucket * file_name_buffer = NULL;
+	arrput(file_name_buffer, StringBucket_create()); // find_recursive will expect an item
 	FileInfo * file_list = NULL;
 	if (find_recursive(".", &file_list, &file_name_buffer)) {
 		return -1;
 	}
 
-	gFileNameBuffer = file_name_buffer;
 	qsort(file_list, arrlen(file_list), sizeof(FileInfo), sort_function);
 	FileInfo * dup_list = NULL;
 	get_duplicates(file_list, file_name_buffer, &dup_list);
@@ -246,8 +267,12 @@ main(int argc, const char ** argv) {
 			printf("\n");
 		}
 		data_size_fmt(format_buffer, dup_list[i].size);
-		printf("(%s) %s\n", format_buffer, file_name_buffer + dup_list[i].name_idx);
+		printf("(%s) %s\n", format_buffer, dup_list[i].name);
 		last_item_size = dup_list[i].size;
+	}
+
+	for (int i=arrlen(file_name_buffer)-1; i >= 0; --i) {
+		free(file_name_buffer[i].data);
 	}
 
 	arrfree(dup_list);
